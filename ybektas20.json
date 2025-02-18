@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "casedreamgames",
+  "private_key_id": "f04a5b5b0561542df9e7d627ce691ac20b17616e",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCypSdpYnvgOb4X\ndYuBxK2YNT/E5QVri9hyhuPFFysaefwk0xwMgth6Cu6Vrr8SsOfC8M6T5wuJ+ALu\no3OQC/2Q/cUr0sfS+y1Vp7bxMMbNSNj5ypFGYanLq9PD25kDE41yjP9svxqia+s/\nj2A4bJZHy6c6lEPWjI7DFstulf0rlsmYlShnrWJfS9wN+q7rgfW1RbBuzIU4xd/E\nNm2UJjPVs2ABZzZ3HTnWFn/xh9uq7Oy9YhDeBVgLO39Qbcao6my8yEeuMAh2uJmQ\nd2l7YB9TL7UsP/cdUOprFdJ5KCHDBMlzzVYhUdTlC/FXSBfuKtnw3lMRFIfNMqBj\nNhzmNWJjAgMBAAECggEAIeiOOAcc+z0Kk1pY3gtOZfcpgP51jmnPbkGjRxw0LsTb\nssOtbcSCQXwEuD2gf/Q7MXnSxCkVPB1qtRAqVbuo6BX7EGvkSOwrOThp1ZMMERgU\nMymbdJACEiotul3ax8Y00Xro2qPVcuHoF7rnqR4XUk5aEhjlXXp1eJtBht6KXPTj\nVJVrPJTIDv3TtSOaq0MkLweAiEcwS9FgBbApji7j+wS0LzD5wX3Fo/bejlgsullL\nGMCsDV43LKctOhewz5k+09lbzxzssZ27XWiylaaiFKU3ahHi+UaM81wbWDUyesIh\nD8dTzZRczKMSP5fsqYt7Y99mvuRxHFarYxZ1bfT+qQKBgQDehs+ldAZFwjPQ8Yvg\nYIwt/wmxdQdSLWR/CpnVBPw2A5lwqFn3J86KFKMP2qu+4bWLFZMA9RlOafU3FSLN\nJoUw7Epx03ymN5rdPYmX+obFIGq50iw+v4ZfyK1Sx+BkeAMwm4+n6aXuk5JKIyQd\nRmQ07lHNZ7OnWBnKNfXNRWmR+wKBgQDNhIdQORkpO85iiK94zPZ4fLXl5MZJ4JzI\nvkzQZ7ltjz6ibwmq4+7FyAFdW4I1fcgGvoCrDGKtnGkYU7j5gN8TpB46xFixhLKE\nK2oznqTRcOyOIUgK/XpmX/8jJltTzYe30aMdoIgNcKqQHCbFzr2PXPrguGhwkhPf\nTw5vnu9suQKBgFpsf55lClN4eePS85sGwI/ETiUNQB9VkLvLC/2y2+X7CnPsBTrY\nsyYLAsPjgNy9DS9qYeUGs/TYO6vZa93fZEogCpQ8cy978vMqGWpnhDJAXP4LeK06\n2Ji9jCjSTc2lsu4imHqMCEBtOQnlQ7ydqQSVPypvlGJQ+5He4XY7WY3XAoGAS+bC\nQrKTxFK+Kk3o4GhyLpWAaGNRiD9YKBuAKwfjx767lyoDHAYKTSlMt7nwIOlPUo5Q\n3ts4Jn45oi5phlw+Bvb54yJYz1b+xylxk5bnsCJQez13afermNujUsv7truVgCIA\naBS9qpkNpSOAflWYVLY2QYBZshmBFVwRLNA6BKECgYBnrscFPL9CVvQ3wfFpglzS\nmhAeW3t6FTXc3UiHhPH8+Cat9webJJm7XxQBguHpMYOx3NwTR8RB2NzTKsfz84g6\n13970km33rvfZ7r6uIKIitp7u23oGH2FzWtfl481fv4C3ScTSt7jLlkH/cfPuiX7\nNg4fALUGNGeztIJw21kQvw==\n-----END PRIVATE KEY-----\n",
+  "client_email": "ybektas20@casedreamgames.iam.gserviceaccount.com",
+  "client_id": "116449755828269283487",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/ybektas20%40casedreamgames.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
