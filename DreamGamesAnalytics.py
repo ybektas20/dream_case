@@ -3,7 +3,8 @@ from google.cloud import bigquery as bq
 
 class DreamGamesAnalytics:
     """
-    A consolidated analytics class that fetches each named query.
+    A consolidated analytics class that fetches named queries
+    for Dream Games data, grouped by logical KPIs and metrics.
     """
     def __init__(self, service_account_path: str):
         self.client = bq.Client.from_service_account_json(service_account_path)
@@ -11,12 +12,307 @@ class DreamGamesAnalytics:
     def _run_query(self, query: str) -> pd.DataFrame:
         return self.client.query(query).result().to_dataframe()
 
-    # -------------------------------------------------------------------------
-    #  1) ARPDAU
-    # -------------------------------------------------------------------------
-    def arpdau_by_package_type(self) -> pd.DataFrame:
+    # =========================================================================
+    #  1) USER ACQUISITION & DAU
+    # =========================================================================
+    def get_dau_trend(self) -> pd.DataFrame:
+        """
+        Returns daily active users (DAU) over time (date).
+        """
         query = """
-        -- Sample logic: sum of daily revenue by package_type / daily DAU 
+        SELECT
+          DATE(event_time) AS date,
+          COUNT(DISTINCT user_id) AS dau
+        FROM `casedreamgames.case_db.q1_table_session`
+        GROUP BY date
+        ORDER BY date
+        """
+        return self._run_query(query)
+
+    def get_dau_by_country(self) -> pd.DataFrame:
+        """
+        Returns daily active users segmented by country.
+        """
+        query = """
+        WITH session_data AS (
+            SELECT DATE(event_time) AS date, user_id
+            FROM `casedreamgames.case_db.q1_table_session`
+        )
+        SELECT
+          s.date,
+          COALESCE(i.country, 'unknown') AS country,
+          COUNT(DISTINCT s.user_id) AS dau
+        FROM session_data s
+        LEFT JOIN `casedreamgames.case_db.q1_table_install` i
+               ON s.user_id = i.user_id
+        GROUP BY s.date, country
+        ORDER BY s.date, country        
+        """
+        return self._run_query(query)
+
+    def get_dau_by_network(self) -> pd.DataFrame:
+        """
+        Returns daily active users segmented by acquisition network.
+        """
+        query = """
+        WITH session_data AS (
+            SELECT DATE(event_time) AS date, user_id
+            FROM `casedreamgames.case_db.q1_table_session`
+        )
+        SELECT
+          s.date,
+          COALESCE(i.network, 'unknown') AS network,
+          COUNT(DISTINCT s.user_id) AS dau
+        FROM session_data s
+        LEFT JOIN `casedreamgames.case_db.q1_table_install` i
+               ON s.user_id = i.user_id
+        GROUP BY s.date, network
+        ORDER BY s.date, network
+        """
+        return self._run_query(query)
+
+    def get_dau_by_platform(self) -> pd.DataFrame:
+        """
+        Returns daily active users segmented by platform (iOS/Android).
+        """
+        query = """
+        SELECT
+          DATE(event_time) AS date,
+          platform,
+          COUNT(DISTINCT user_id) AS dau
+        FROM `casedreamgames.case_db.q1_table_session`
+        GROUP BY date, platform
+        ORDER BY date, platform
+        """
+        return self._run_query(query)
+
+    def get_dau_by_package_type(self) -> pd.DataFrame:
+        """
+        Returns daily active users segmented by package_type (based on purchases).
+        """
+        query = """
+        WITH user_pkg AS (
+            SELECT DISTINCT user_id, package_type
+            FROM `casedreamgames.case_db.q1_table_revenue`
+        ),
+        session_data AS (
+            SELECT DATE(event_time) AS date, user_id
+            FROM `casedreamgames.case_db.q1_table_session`
+        )
+        SELECT 
+          s.date,
+          COALESCE(u.package_type, 'no_purchase') AS package_type,
+          COUNT(DISTINCT s.user_id) AS dau
+        FROM session_data s
+        LEFT JOIN user_pkg u ON s.user_id = u.user_id
+        GROUP BY s.date, u.package_type
+        ORDER BY s.date, package_type
+        """
+        return self._run_query(query)
+
+    def get_mau(self) -> pd.DataFrame:
+        """
+        Returns monthly active users (MAU) by year and month.
+        """
+        query = """
+        SELECT
+          EXTRACT(YEAR FROM event_time) AS year,
+          EXTRACT(MONTH FROM event_time) AS month,
+          COUNT(DISTINCT user_id) AS mau
+        FROM `casedreamgames.case_db.q1_table_session`
+        GROUP BY year, month
+        ORDER BY year, month
+        """
+        return self._run_query(query)
+
+    # =========================================================================
+    #  2) RETENTION
+    # =========================================================================
+    def get_retention_trend(self) -> pd.DataFrame:
+        """
+        Returns daily install counts, day-1 retained users, and day-1 retention rate.
+        """
+        query = """
+        WITH installs AS (
+          SELECT user_id, DATE(event_time) AS install_date
+          FROM `casedreamgames.case_db.q1_table_install`
+        ),
+        sessions AS (
+          SELECT user_id, DATE(event_time) AS session_date
+          FROM `casedreamgames.case_db.q1_table_session`
+        )
+        SELECT
+          i.install_date,
+          COUNT(DISTINCT i.user_id) AS installs,
+          COUNT(DISTINCT s.user_id) AS retained_day1,
+          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
+        FROM installs i
+        LEFT JOIN sessions s
+               ON i.user_id = s.user_id
+              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
+        GROUP BY i.install_date
+        ORDER BY i.install_date
+        """
+        return self._run_query(query)
+
+    def get_retention_by_country(self) -> pd.DataFrame:
+        """
+        Returns day-1 retention by country.
+        """
+        query = """
+        WITH installs AS (
+          SELECT user_id, country, DATE(event_time) AS install_date
+          FROM `casedreamgames.case_db.q1_table_install`
+        ),
+        user_pkg AS (
+          SELECT DISTINCT user_id, package_type
+          FROM `casedreamgames.case_db.q1_table_revenue`
+        ),
+        sessions AS (
+          SELECT user_id, DATE(event_time) AS session_date
+          FROM `casedreamgames.case_db.q1_table_session`
+        )
+        SELECT
+          COALESCE(i.country, 'unknown') AS country,
+          i.install_date,
+          COUNT(DISTINCT i.user_id) AS installs,
+          COUNT(DISTINCT s.user_id) AS retained_day1,
+          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
+        FROM installs i
+        LEFT JOIN user_pkg u ON i.user_id = u.user_id
+        LEFT JOIN sessions s
+               ON i.user_id = s.user_id
+              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
+        GROUP BY country, i.install_date
+        ORDER BY i.install_date, country
+        """
+        return self._run_query(query)
+
+    def get_retention_by_network(self) -> pd.DataFrame:
+        """
+        Returns day-1 retention segmented by network.
+        """
+        query = """
+        WITH installs AS (
+          SELECT user_id, network, DATE(event_time) AS install_date
+          FROM `casedreamgames.case_db.q1_table_install`
+        ),
+        sessions AS (
+          SELECT user_id, DATE(event_time) AS session_date
+          FROM `casedreamgames.case_db.q1_table_session`
+        )
+        SELECT
+          COALESCE(i.network, 'unknown') AS network,
+          i.install_date,
+          COUNT(DISTINCT i.user_id) AS installs,
+          COUNT(DISTINCT s.user_id) AS retained_day1,
+          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
+        FROM installs i
+        LEFT JOIN sessions s
+               ON i.user_id = s.user_id
+              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
+        GROUP BY network, i.install_date
+        ORDER BY i.install_date, network
+        """
+        return self._run_query(query)
+
+    def get_retention_by_platform(self) -> pd.DataFrame:
+        """
+        Returns day-1 retention segmented by platform.
+        """
+        query = """
+        WITH installs AS (
+          SELECT user_id, platform, DATE(event_time) AS install_date
+          FROM `casedreamgames.case_db.q1_table_install`
+        ),
+        sessions AS (
+          SELECT user_id, DATE(event_time) AS session_date
+          FROM `casedreamgames.case_db.q1_table_session`
+        )
+        SELECT
+          COALESCE(i.platform, 'unknown') AS platform,
+          i.install_date,
+          COUNT(DISTINCT i.user_id) AS installs,
+          COUNT(DISTINCT s.user_id) AS retained_day1,
+          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
+        FROM installs i
+        LEFT JOIN sessions s
+               ON i.user_id = s.user_id
+              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
+        GROUP BY platform, i.install_date
+        ORDER BY i.install_date, platform
+        """
+        return self._run_query(query)
+
+    def get_retention_by_package_type(self) -> pd.DataFrame:
+        """
+        Returns day-1 retention segmented by package_type (purchase behavior).
+        """
+        query = """
+        WITH installs AS (
+          SELECT user_id, DATE(event_time) AS install_date
+          FROM `casedreamgames.case_db.q1_table_install`
+        ),
+        user_pkg AS (
+          SELECT DISTINCT user_id, package_type
+          FROM `casedreamgames.case_db.q1_table_revenue`
+        ),
+        sessions AS (
+          SELECT user_id, DATE(event_time) AS session_date
+          FROM `casedreamgames.case_db.q1_table_session`
+        )
+        SELECT
+          COALESCE(u.package_type, 'no_purchase') AS package_type,
+          i.install_date,
+          COUNT(DISTINCT i.user_id) AS installs,
+          COUNT(DISTINCT s.user_id) AS retained_day1,
+          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
+        FROM installs i
+        LEFT JOIN user_pkg u ON i.user_id = u.user_id
+        LEFT JOIN sessions s
+               ON i.user_id = s.user_id
+              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
+        GROUP BY package_type, i.install_date
+        ORDER BY i.install_date, package_type
+        """
+        return self._run_query(query)
+
+    # =========================================================================
+    #  3) MONETIZATION (ARPU / ARPDAU)
+    # =========================================================================
+    def get_arpdau_trend(self) -> pd.DataFrame:
+        """
+        Returns daily ARPDAU (no grouping).
+        """
+        query = """
+        WITH daily_revenue AS (
+          SELECT
+            DATE(event_time) AS date,
+            SUM(CAST(revenue AS FLOAT64)) AS total_revenue
+          FROM `casedreamgames.case_db.q1_table_revenue`
+          GROUP BY date
+        ),
+        daily_active AS (
+          SELECT
+            DATE(event_time) AS date,
+            COUNT(DISTINCT user_id) AS dau
+          FROM `casedreamgames.case_db.q1_table_session`
+          GROUP BY date
+        )
+        SELECT
+          dr.date,
+          dr.total_revenue / da.dau AS arpdau
+        FROM daily_revenue dr
+        JOIN daily_active da USING(date)
+        ORDER BY dr.date
+        """
+        return self._run_query(query)
+
+    def get_arpdau_by_package_type(self) -> pd.DataFrame:
+        """
+        Returns ARPDAU grouped by package_type over time.
+        """
+        query = """
         WITH revenue_pkg AS (
           SELECT
             DATE(event_time) AS date,
@@ -42,9 +338,11 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    def arpdau_by_network(self) -> pd.DataFrame:
+    def get_arpdau_by_network(self) -> pd.DataFrame:
+        """
+        Returns ARPDAU grouped by network over time.
+        """
         query = """
-        -- ARPDAU by network
         WITH user_attrs AS (
           SELECT user_id, network
           FROM `casedreamgames.case_db.q1_table_install`
@@ -77,7 +375,40 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    def arpdau_by_level(self) -> pd.DataFrame:
+    def get_arpdau_by_platform(self) -> pd.DataFrame:
+        """
+        Returns ARPDAU grouped by platform over time.
+        """
+        query = """
+        WITH daily_rev AS (
+          SELECT
+            DATE(r.event_time) AS date,
+            SUM(CAST(r.revenue AS FLOAT64)) AS total_revenue
+          FROM `casedreamgames.case_db.q1_table_revenue` r
+          GROUP BY date
+        ),
+        daily_active AS (
+          SELECT
+            DATE(s.event_time) AS date,
+            platform,
+            COUNT(DISTINCT s.user_id) AS dau
+          FROM `casedreamgames.case_db.q1_table_session` s
+          GROUP BY date, platform
+        )
+        SELECT
+          d.platform,
+          d.date,
+          SAFE_DIVIDE(r.total_revenue, d.dau) AS arpdau
+        FROM daily_rev r
+        JOIN daily_active d USING(date)
+        ORDER BY d.platform, d.date
+        """
+        return self._run_query(query)
+
+    def get_arpdau_by_level(self) -> pd.DataFrame:
+        """
+        Returns ARPDAU grouped by level (session level) over time.
+        """
         query = """
         WITH user_daily_level AS (
           SELECT
@@ -116,37 +447,11 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    def arpdau_by_platform(self) -> pd.DataFrame:
-        query = """
-        -- ARPDAU by platform
-        WITH daily_rev AS (
-          SELECT
-            DATE(r.event_time) AS date,
-            SUM(CAST(r.revenue AS FLOAT64)) AS total_revenue
-          FROM `casedreamgames.case_db.q1_table_revenue` r
-          GROUP BY date
-        ),
-        daily_active AS (
-          SELECT
-            DATE(s.event_time) AS date,
-            platform,
-            COUNT(DISTINCT s.user_id) AS dau
-          FROM `casedreamgames.case_db.q1_table_session` s
-          GROUP BY date, platform
-        )
-        SELECT
-          d.platform,
-          d.date,
-          SAFE_DIVIDE(r.total_revenue, d.dau) AS arpdau
-        FROM daily_rev r
-        JOIN daily_active d USING(date)
-        ORDER BY d.platform, d.date
+    def get_arpu_trend(self) -> pd.DataFrame:
         """
-        return self._run_query(query)
-
-    def arpdau_trend(self) -> pd.DataFrame:
+        Returns a daily ARPU time series, dividing total daily revenue by the cumulative user base.
+        """
         query = """
-        -- ARPDAU (no grouping)
         WITH daily_revenue AS (
           SELECT
             DATE(event_time) AS date,
@@ -154,26 +459,38 @@ class DreamGamesAnalytics:
           FROM `casedreamgames.case_db.q1_table_revenue`
           GROUP BY date
         ),
-        daily_active AS (
+        daily_new_users AS (
+          -- How many distinct new installers on each date
           SELECT
             DATE(event_time) AS date,
-            COUNT(DISTINCT user_id) AS dau
-          FROM `casedreamgames.case_db.q1_table_session`
+            COUNT(DISTINCT user_id) AS daily_installs
+          FROM `casedreamgames.case_db.q1_table_install`
           GROUP BY date
+        ),
+        cumulative_installs AS (
+          -- Running sum of daily installs
+          SELECT
+            date,
+            SUM(daily_installs) OVER (
+              ORDER BY date 
+              ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ) AS cum_users
+          FROM daily_new_users
         )
         SELECT
-          dr.date,
-          dr.total_revenue / da.dau AS arpdau
-        FROM daily_revenue dr
-        JOIN daily_active da USING(date)
-        ORDER BY dr.date
+          r.date,
+          SAFE_DIVIDE(r.total_revenue, ci.cum_users) AS arpu
+        FROM daily_revenue r
+        JOIN cumulative_installs ci USING(date)
+        ORDER BY r.date;
+        
         """
         return self._run_query(query)
 
-    # -------------------------------------------------------------------------
-    #  2) ARPU
-    # -------------------------------------------------------------------------
-    def arpu_by_level_progression(self) -> pd.DataFrame:
+    def get_arpu_by_level_progression(self) -> pd.DataFrame:
+        """
+        Returns ARPU segmented by users' maximum level progression.
+        """
         query = """
         WITH max_level AS (
           SELECT
@@ -201,7 +518,10 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    def arpu_by_package_type(self) -> pd.DataFrame:
+    def get_arpu_by_package_type(self) -> pd.DataFrame:
+        """
+        Returns ARPU segmented by package_type.
+        """
         query = """
         WITH pkg_revenue AS (
           SELECT
@@ -227,7 +547,10 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    def arpu_by_user_cohort(self) -> pd.DataFrame:
+    def get_arpu_by_user_cohort(self) -> pd.DataFrame:
+        """
+        Returns ARPU by install cohort (year & month).
+        """
         query = """
         WITH user_cohort AS (
           SELECT
@@ -255,38 +578,10 @@ class DreamGamesAnalytics:
         ORDER BY install_year, install_month
         """
         return self._run_query(query)
-                               
 
-    def arpu_trend(self) -> pd.DataFrame:
-        query = """
-        WITH daily_revenue AS (
-          SELECT
-            DATE(event_time) AS date,
-            SUM(CAST(revenue AS FLOAT64)) AS total_revenue
-          FROM `casedreamgames.case_db.q1_table_revenue`
-          GROUP BY date
-        ),
-        total_users AS (
-          SELECT
-            DATE(event_time) AS date,
-            COUNT(DISTINCT user_id) 
-              OVER(ORDER BY DATE(event_time) 
-                   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cum_users
-          FROM `casedreamgames.case_db.q1_table_install`
-        )
-        SELECT
-          r.date,
-          SAFE_DIVIDE(r.total_revenue, u.cum_users) AS arpu
-        FROM daily_revenue r
-        JOIN total_users u USING(date)
-        ORDER BY r.date
+    def get_arpu_by_network(self) -> pd.DataFrame:
         """
-        return self._run_query(query)
-
-    def arpu_by_network(self) -> pd.DataFrame:
-        """
-        Possibly in your list twice. 
-        We'll do total revenue by network / total users by network = ARPU by network.
+        Returns ARPU segmented by network.
         """
         query = """
         WITH install_attrs AS (
@@ -310,278 +605,102 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    # -------------------------------------------------------------------------
-    #  3) DAU
-    # -------------------------------------------------------------------------
-    def dau_by_package_type(self) -> pd.DataFrame:
+    # =========================================================================
+    #  4) COST & ROAS
+    # =========================================================================
+    def get_cost(self) -> pd.DataFrame:
+        """
+        Returns cost data from q1_table_cost (all rows),
+        ordered by date, platform, network, country.
+        """
         query = """
-        -- As previously discussed, we interpret "dau_by_package_type" 
-        -- as the daily active users who purchased or are associated with a package type.
-        WITH user_pkg AS (
-            SELECT DISTINCT user_id, package_type
-            FROM `casedreamgames.case_db.q1_table_revenue`
-        ),
-        session_data AS (
-            SELECT DATE(event_time) AS date, user_id
-            FROM `casedreamgames.case_db.q1_table_session`
-        )
-        SELECT 
-          s.date,
-          COALESCE(u.package_type, 'no_purchase') AS package_type,
-          COUNT(DISTINCT s.user_id) AS dau
-        FROM session_data s
-        LEFT JOIN user_pkg u ON s.user_id = u.user_id
-        GROUP BY s.date, u.package_type
-        ORDER BY s.date, package_type
+        SELECT * 
+        FROM `casedreamgames.case_db.q1_table_cost`
+        ORDER BY date, platform, network, country
         """
         return self._run_query(query)
 
-    def dau_by_network(self) -> pd.DataFrame:
-        query = """
-        -- DAU by network
-        WITH session_data AS (
-            SELECT DATE(event_time) AS date, user_id
-            FROM `casedreamgames.case_db.q1_table_session`
-        )
-        SELECT
-          s.date,
-          COALESCE(i.network, 'unknown') AS network,
-          COUNT(DISTINCT s.user_id) AS dau
-        FROM session_data s
-        LEFT JOIN `casedreamgames.case_db.q1_table_install` i
-               ON s.user_id = i.user_id
-        GROUP BY s.date, network
-        ORDER BY s.date, network
+    def get_cost_per_install(self) -> pd.DataFrame:
         """
-        return self._run_query(query)
-    
-    def dau_by_country(self) -> pd.DataFrame:
-        query="""
-        -- DAU by country
-        WITH session_data AS (
-            SELECT DATE(event_time) AS date, user_id
-            FROM `casedreamgames.case_db.q1_table_session`
-        )
-        SELECT
-          s.date,
-          COALESCE(i.country, 'unknown') AS country,
-          COUNT(DISTINCT s.user_id) AS dau
-        FROM session_data s
-        LEFT JOIN `casedreamgames.case_db.q1_table_install` i
-               ON s.user_id = i.user_id
-        GROUP BY s.date, country
-        ORDER BY s.date, country        
+        Returns a daily joined table of (date, country, platform, network, installs, total_cost).
         """
-        return self._run_query(query)
-
-    def dau_by_platform(self) -> pd.DataFrame:
-        query = """
+        query =  """
+        WITH daily_installs AS (
+            SELECT
+                DATE(event_time) AS date,
+                country,
+                platform,
+                network,
+                COUNT(DISTINCT user_id) AS installs
+            FROM `casedreamgames.case_db.q1_table_install`
+            GROUP BY 1, 2, 3, 4
+        ),        
+        daily_cost AS (
+            SELECT
+                date,
+                country,
+                platform,
+                network,
+                SUM(cost) AS total_cost
+            FROM `casedreamgames.case_db.q1_table_cost`
+            GROUP BY 1, 2, 3, 4
+        )       
         SELECT
-          DATE(event_time) AS date,
-          platform,
-          COUNT(DISTINCT user_id) AS dau
-        FROM `casedreamgames.case_db.q1_table_session`
-        GROUP BY date, platform
-        ORDER BY date, platform
+            di.date,
+            di.country,
+            di.platform,
+            di.network,
+            di.installs,
+            COALESCE(dc.total_cost, 0) AS total_cost
+        FROM daily_installs di
+        LEFT JOIN daily_cost dc
+            ON di.date = dc.date
+            AND di.country = dc.country
+            AND di.platform = dc.platform
+            AND di.network = dc.network
+        ORDER BY 
+            di.date,
+            di.country,
+            di.platform,
+            di.network;       
         """
         return self._run_query(query)
 
-    def dau_trend(self) -> pd.DataFrame:
-        query = """
-        SELECT
-          DATE(event_time) AS date,
-          COUNT(DISTINCT user_id) AS dau
-        FROM `casedreamgames.case_db.q1_table_session`
-        GROUP BY date
-        ORDER BY date
+    def get_roas_trend(self) -> pd.DataFrame:
         """
-        return self._run_query(query)
-
-    # -------------------------------------------------------------------------
-    #  4) Retention
-    # -------------------------------------------------------------------------
-    def retention_by_groups(self) -> pd.DataFrame:
-        query = """
-        -- Day-1 retention by (platform, network, country)
-        WITH installs AS (
-          SELECT 
-            user_id,
-            platform,
-            network,
-            country,
-            DATE(event_time) AS install_date
-          FROM `casedreamgames.case_db.q1_table_install`
-        ),
-        sessions AS (
-          SELECT user_id, DATE(event_time) AS session_date
-          FROM `casedreamgames.case_db.q1_table_session`
-        )
-        SELECT
-          COALESCE(i.platform, 'unknown') AS platform,
-          COALESCE(i.network, 'unknown')  AS network,
-          COALESCE(i.country, 'unknown')  AS country,
-          i.install_date,
-          COUNT(DISTINCT i.user_id) AS installs,
-          COUNT(DISTINCT s.user_id) AS retained_day1,
-          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
-        FROM installs i
-        LEFT JOIN sessions s
-               ON i.user_id = s.user_id
-              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
-        GROUP BY platform, network, country, i.install_date
-        ORDER BY i.install_date, platform, network, country
+        Returns daily ROAS over time (total_revenue / total_cost).
         """
-        return self._run_query(query)
-
-    def retention_by_package_type(self) -> pd.DataFrame:
         query = """
-        -- as Day-1 retention among users who have or haven't purchased certain package types
-        WITH installs AS (
-          SELECT user_id, DATE(event_time) AS install_date
-          FROM `casedreamgames.case_db.q1_table_install`
-        ),
-        user_pkg AS (
-          SELECT DISTINCT user_id, package_type
-          FROM `casedreamgames.case_db.q1_table_revenue`
-        ),
-        sessions AS (
-          SELECT user_id, DATE(event_time) AS session_date
-          FROM `casedreamgames.case_db.q1_table_session`
-        )
-        SELECT
-          COALESCE(u.package_type, 'no_purchase') AS package_type,
-          i.install_date,
-          COUNT(DISTINCT i.user_id) AS installs,
-          COUNT(DISTINCT s.user_id) AS retained_day1,
-          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
-        FROM installs i
-        LEFT JOIN user_pkg u ON i.user_id = u.user_id
-        LEFT JOIN sessions s
-               ON i.user_id = s.user_id
-              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
-        GROUP BY package_type, i.install_date
-        ORDER BY i.install_date, package_type
-        """
-        return self._run_query(query)
-
-    def retention_by_network(self) -> pd.DataFrame:
-        query = """
-        WITH installs AS (
-          SELECT user_id, network, DATE(event_time) AS install_date
-          FROM `casedreamgames.case_db.q1_table_install`
-        ),
-        sessions AS (
-          SELECT user_id, DATE(event_time) AS session_date
-          FROM `casedreamgames.case_db.q1_table_session`
-        )
-        SELECT
-          COALESCE(i.network, 'unknown') AS network,
-          i.install_date,
-          COUNT(DISTINCT i.user_id) AS installs,
-          COUNT(DISTINCT s.user_id) AS retained_day1,
-          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
-        FROM installs i
-        LEFT JOIN sessions s
-               ON i.user_id = s.user_id
-              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
-        GROUP BY network, i.install_date
-        ORDER BY i.install_date, network
-        """
-        return self._run_query(query)
-
-    def retention_by_level(self) -> pd.DataFrame:
-        query = """
-        -- Example "retention_by_level" interpretation
-        WITH day0_level AS (
+        WITH daily_rev AS (
           SELECT
-            user_id,
-            MAX(level) AS level_on_install_day,
-            DATE(event_time) AS date
-          FROM `casedreamgames.case_db.q1_table_session`
-          GROUP BY user_id, date
+            DATE(event_time) AS date,
+            SUM(CAST(revenue AS FLOAT64)) AS total_revenue
+          FROM `casedreamgames.case_db.q1_table_revenue`
+          GROUP BY date
         ),
-        installs AS (
-          SELECT user_id, DATE(event_time) AS install_date
-          FROM `casedreamgames.case_db.q1_table_install`
-        ),
-        sessions AS (
-          SELECT user_id, DATE(event_time) AS session_date
-          FROM `casedreamgames.case_db.q1_table_session`
+        daily_cost AS (
+          SELECT
+            date,
+            SUM(cost) AS total_cost
+          FROM `casedreamgames.case_db.q1_table_cost`
+          GROUP BY date
         )
         SELECT
-          d.level_on_install_day,
-          i.install_date,
-          COUNT(DISTINCT i.user_id) AS installs,
-          COUNT(DISTINCT s.user_id) AS retained_day1,
-          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
-        FROM installs i
-        LEFT JOIN day0_level d
-               ON i.user_id = d.user_id
-              AND i.install_date = d.date
-        LEFT JOIN sessions s
-               ON i.user_id = s.user_id
-              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
-        GROUP BY d.level_on_install_day, i.install_date
-        ORDER BY i.install_date, d.level_on_install_day
+          r.date,
+          r.total_revenue,
+          c.total_cost,
+          SAFE_DIVIDE(r.total_revenue, c.total_cost) AS roas
+        FROM daily_rev r
+        JOIN daily_cost c USING(date)
+        ORDER BY r.date
         """
         return self._run_query(query)
 
-    def retention_by_platform(self) -> pd.DataFrame:
-        query = """
-        WITH installs AS (
-          SELECT user_id, platform, DATE(event_time) AS install_date
-          FROM `casedreamgames.case_db.q1_table_install`
-        ),
-        sessions AS (
-          SELECT user_id, DATE(event_time) AS session_date
-          FROM `casedreamgames.case_db.q1_table_session`
-        )
-        SELECT
-          COALESCE(i.platform, 'unknown') AS platform,
-          i.install_date,
-          COUNT(DISTINCT i.user_id) AS installs,
-          COUNT(DISTINCT s.user_id) AS retained_day1,
-          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
-        FROM installs i
-        LEFT JOIN sessions s
-               ON i.user_id = s.user_id
-              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
-        GROUP BY platform, i.install_date
-        ORDER BY i.install_date, platform
+    def get_roas_by_package_type(self) -> pd.DataFrame:
         """
-        return self._run_query(query)
-
-    def retention_trend(self) -> pd.DataFrame:
-        query = """
-        WITH installs AS (
-          SELECT user_id, DATE(event_time) AS install_date
-          FROM `casedreamgames.case_db.q1_table_install`
-        ),
-        sessions AS (
-          SELECT user_id, DATE(event_time) AS session_date
-          FROM `casedreamgames.case_db.q1_table_session`
-        )
-        SELECT
-          i.install_date,
-          COUNT(DISTINCT i.user_id) AS installs,
-          COUNT(DISTINCT s.user_id) AS retained_day1,
-          SAFE_DIVIDE(COUNT(DISTINCT s.user_id), COUNT(DISTINCT i.user_id)) AS retention_day1
-        FROM installs i
-        LEFT JOIN sessions s
-               ON i.user_id = s.user_id
-              AND s.session_date = DATE_ADD(i.install_date, INTERVAL 1 DAY)
-        GROUP BY i.install_date
-        ORDER BY i.install_date
+        Returns ROAS by package_type, joining daily cost lumpsum.
         """
-        return self._run_query(query)
-
-    # -------------------------------------------------------------------------
-    #  5) ROAS
-    # -------------------------------------------------------------------------
-    def roas_by_package_type(self) -> pd.DataFrame:
         query = """
-        -- Because cost table doesn't have package_type, 
-        -- we do lumpsum cost per day, revenue by package_type per day.
         WITH daily_rev AS (
           SELECT
             DATE(event_time) AS date,
@@ -609,7 +728,10 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    def roas_by_network(self) -> pd.DataFrame:
+    def get_roas_by_network(self) -> pd.DataFrame:
+        """
+        Returns ROAS segmented by network (matching daily revenue to daily cost).
+        """
         query = """
         WITH daily_rev AS (
           SELECT
@@ -643,9 +765,11 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    def roas_by_level(self) -> pd.DataFrame:
+    def get_roas_by_level(self) -> pd.DataFrame:
+        """
+        Returns daily ROAS by level, matching daily cost lumpsum with daily revenue at that level.
+        """
         query = """
-        -- Lumpsum cost per day, revenue by day+level
         WITH daily_rev AS (
           SELECT 
             DATE(le.event_time) AS date,
@@ -676,7 +800,10 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    def roas_by_platform(self) -> pd.DataFrame:
+    def get_roas_by_platform(self) -> pd.DataFrame:
+        """
+        Returns ROAS segmented by platform.
+        """
         query = """
         WITH daily_rev AS (
           SELECT
@@ -708,49 +835,193 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    def roas_trend(self) -> pd.DataFrame:
+    # =========================================================================
+    #  5) USER ENGAGEMENT (TIME SPENT, LEVELS, ETC.)
+    # =========================================================================
+    def get_avg_time_spent(self) -> pd.DataFrame:
+        """
+        Returns average total session time per user, 
+        grouped by day_of_week, hour_of_day, and country.
+        """
         query = """
-        WITH daily_rev AS (
+        WITH user_hourly AS (
           SELECT
-            DATE(event_time) AS date,
-            SUM(CAST(revenue AS FLOAT64)) AS total_revenue
-          FROM `casedreamgames.case_db.q1_table_revenue`
-          GROUP BY date
-        ),
-        daily_cost AS (
-          SELECT
-            date,
-            SUM(cost) AS total_cost
-          FROM `casedreamgames.case_db.q1_table_cost`
-          GROUP BY date
+            EXTRACT(DAYOFWEEK FROM s.event_time) AS day_of_week,
+            EXTRACT(HOUR FROM s.event_time)      AS hour_of_day,
+            i.country,
+            s.user_id,
+            SUM(s.time_spent) AS total_time_spent
+          FROM `casedreamgames.case_db.q1_table_session` s
+          JOIN `casedreamgames.case_db.q1_table_install` i
+            ON s.user_id = i.user_id
+          GROUP BY 
+            day_of_week,
+            hour_of_day,
+            i.country,
+            s.user_id
         )
         SELECT
-          r.date,
-          r.total_revenue,
-          c.total_cost,
-          SAFE_DIVIDE(r.total_revenue, c.total_cost) AS roas
-        FROM daily_rev r
-        JOIN daily_cost c USING(date)
-        ORDER BY r.date
+          day_of_week,
+          hour_of_day,
+          country,
+          AVG(total_time_spent) AS avg_time_spent
+        FROM user_hourly
+        GROUP BY 
+          day_of_week,
+          hour_of_day,
+          country
+        ORDER BY 
+          day_of_week,
+          hour_of_day,
+          country;
         """
         return self._run_query(query)
 
-    # -------------------------------------------------------------------------
-    #  6) Other (MAU, conversion_rate, etc.)
-    # -------------------------------------------------------------------------
-    def mau(self) -> pd.DataFrame:
+    def get_avg_time_spent_per_level(self) -> pd.DataFrame:
+        """
+        Returns average total time spent for each level (summed across attempts).
+        """
         query = """
+        WITH user_level_time AS (
+          SELECT
+            level,
+            user_id,
+            SUM(time_spent) AS total_time_spent
+          FROM `casedreamgames.case_db.q1_table_level_end`
+          GROUP BY 1, 2
+        )
         SELECT
-          EXTRACT(YEAR FROM event_time) AS year,
-          EXTRACT(MONTH FROM event_time) AS month,
-          COUNT(DISTINCT user_id) AS mau
-        FROM `casedreamgames.case_db.q1_table_session`
-        GROUP BY year, month
-        ORDER BY year, month
+          level,
+          AVG(total_time_spent) AS avg_total_time_spent
+        FROM user_level_time
+        GROUP BY level
+        ORDER BY level;
         """
         return self._run_query(query)
 
-    def user_count_of_groups(self) -> pd.DataFrame:
+    def get_avg_time_spent_on_last_failed_level(self) -> pd.DataFrame:
+        """
+        Returns the average time spent on the last failed level for users 
+        whose final recorded event is a failure.
+        """
+        query = """
+        WITH final_attempt AS (
+          SELECT
+            user_id,
+            level,
+            time_spent,
+            status,
+            event_time,
+            ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY event_time DESC) AS rn
+          FROM `casedreamgames.case_db.q1_table_level_end`
+        ),
+        last_failed AS (
+          SELECT 
+            user_id,
+            level,
+            time_spent
+          FROM final_attempt
+          WHERE rn = 1
+            AND status = 'fail'
+        )
+        SELECT 
+          level,
+          COUNT(*) AS num_users,
+          AVG(time_spent) AS avg_time_spent_on_last_failed_level
+        FROM last_failed
+        GROUP BY level
+        ORDER BY level;
+        """
+        return self._run_query(query)
+
+    def get_revenue_by_time_spent(self) -> pd.DataFrame:
+        """
+        Returns daily revenue per unit of total session time:
+        sum(daily_revenue) / sum(daily_time_spent).
+        """
+        query = """
+        WITH daily_sess AS (
+          SELECT
+            DATE(event_time) AS date,
+            user_id,
+            SUM(time_spent) AS daily_time_spent
+          FROM `casedreamgames.case_db.q1_table_session`
+          GROUP BY date, user_id
+        ),
+        daily_rev AS (
+          SELECT
+            DATE(event_time) AS date,
+            user_id,
+            SUM(CAST(revenue AS FLOAT64)) AS daily_revenue
+          FROM `casedreamgames.case_db.q1_table_revenue`
+          GROUP BY date, user_id
+        )
+        SELECT
+          ds.date,
+          SAFE_DIVIDE(SUM(ds.daily_revenue), SUM(ds.daily_time_spent)) AS revenue_per_time_spent
+        FROM (
+          SELECT
+            s.date,
+            s.user_id,
+            COALESCE(r.daily_revenue, 0) AS daily_revenue,
+            s.daily_time_spent
+          FROM daily_sess AS s
+          LEFT JOIN daily_rev AS r
+            ON s.date = r.date
+           AND s.user_id = r.user_id
+        ) ds
+        GROUP BY ds.date
+        ORDER BY ds.date;
+        """
+        return self._run_query(query)
+    
+    def get_number_of_people_passing_level(self) -> pd.DataFrame:
+        query = """
+        SELECT level,
+              COUNT(DISTINCT user_id) AS num_people_passed
+        FROM `casedreamgames.case_db.q1_table_level_end`
+        WHERE status = 'win'
+        GROUP BY level
+        ORDER BY level;
+        """
+        return self._run_query(query)
+    
+    def get_avg_time_spent_by_groups(self) -> pd.DataFrame:
+        query =  """
+        WITH daily_user_session AS (
+          SELECT
+            DATE(s.event_time) AS date,
+            i.network,
+            i.country,
+            s.platform,
+            s.user_id,
+            SUM(s.time_spent) AS daily_session_time
+          FROM `casedreamgames.case_db.q1_table_session` s
+          JOIN `casedreamgames.case_db.q1_table_install` i
+            ON s.user_id = i.user_id
+          GROUP BY 1,2,3,4,5
+        )
+
+        SELECT
+          date,
+          network,
+          country,
+          platform,
+          COUNT(DISTINCT user_id) AS user_count,
+          AVG(daily_session_time) AS avg_session_time_per_user
+        FROM daily_user_session
+        GROUP BY 1,2,3,4
+        ORDER BY 1,2,3,4;
+        """
+        return self._run_query(query)
+
+    # =========================================================================
+    #  6) OTHER (e.g., Conversion Rate, Levels)
+    # =========================================================================
+    def get_user_count_of_groups(self) -> pd.DataFrame:
+        """
+        Returns user counts grouped by (platform, network, country).
+        """
         query = """
         SELECT
           COALESCE(platform, 'unknown') AS platform,
@@ -763,41 +1034,11 @@ class DreamGamesAnalytics:
         """
         return self._run_query(query)
 
-    def cost(self) -> pd.DataFrame:
-        query = """
-        SELECT * FROM `casedreamgames.case_db.q1_table_cost`
-        
+    def get_conversion_rate_by_groups(self) -> pd.DataFrame:
         """
-        return self._run_query(query)   
-
-    def avg_session_duration_by_groups(self) -> pd.DataFrame:
-        query = """
-        WITH sess AS (
-          SELECT 
-            user_id,
-            platform AS session_platform,
-            time_spent
-          FROM `casedreamgames.case_db.q1_table_session`
-        ),
-        install_attrs AS (
-          SELECT DISTINCT user_id, platform, network, country
-          FROM `casedreamgames.case_db.q1_table_install`
-        )
-        SELECT
-          COALESCE(i.platform, 'unknown')  AS install_platform,
-          COALESCE(i.network,  'unknown')  AS network,
-          COALESCE(i.country,  'unknown')  AS country,
-          AVG(s.time_spent) AS avg_session_duration
-        FROM sess s
-        LEFT JOIN install_attrs i ON s.user_id = i.user_id
-        GROUP BY install_platform, network, country
-        ORDER BY install_platform, network, country
+        Returns (#payers / total_users) for each (platform, network, country).
         """
-        return self._run_query(query)
-
-    def conversion_rate_by_groups(self) -> pd.DataFrame:
         query = """
-        -- (# of payers / total users) by platform, network, country
         WITH user_attrs AS (
           SELECT user_id, platform, network, country
           FROM `casedreamgames.case_db.q1_table_install`
@@ -822,4 +1063,3 @@ class DreamGamesAnalytics:
         ORDER BY platform, network, country
         """
         return self._run_query(query)
-

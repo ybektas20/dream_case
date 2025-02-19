@@ -1,0 +1,34 @@
+query = """
+WITH user_level_min_time AS (
+  -- 1. For each user and level, find the first time they reached that level
+  SELECT
+    user_id,
+    level,
+    MIN(event_time) AS first_time
+  FROM `casedreamgames.case_db.q1_table_level_end`
+  GROUP BY user_id, level
+),
+level_cumulative_time AS (
+  -- 2. Sum session time up to (and including) the user's first_time reaching that level
+  SELECT
+    ul.level,
+    ul.user_id,
+    SUM(s.time_spent) AS total_time_spent_up_to_level
+  FROM user_level_min_time AS ul
+  JOIN `casedreamgames.case_db.q1_table_session` AS s
+    ON s.user_id = ul.user_id
+   AND s.event_time <= ul.first_time
+  GROUP BY ul.level, ul.user_id
+)
+-- 3. Calculate the average cumulative session time for each level
+SELECT
+  level,
+  AVG(total_time_spent_up_to_level) AS avg_cumulative_time_spent
+FROM level_cumulative_time
+GROUP BY level
+ORDER BY level;
+"""
+
+avg_cumulative_time_spent_per_level = analytics._run_query(query)
+avg_cumulative_time_spent_per_level = avg_cumulative_time_spent_per_level.set_index('level')
+avg_cumulative_time_spent_per_level.plot(title='Avg Cumulative Time Spent per Level')
