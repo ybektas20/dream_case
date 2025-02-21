@@ -175,3 +175,97 @@ def plot_calibration_curve(y_true, y_prob, n_bins=10, title="Calibration Curve")
     plt.grid(True)
     plt.show()
 
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.metrics import roc_curve, auc
+from sklearn.calibration import calibration_curve
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
+
+def plot_roc_curves(true_labels, proba_df, labels=None):
+    """
+    Plot ROC curves for multiple models.
+    
+    Parameters:
+    - true_labels: array-like, the true binary labels.
+    - proba_df: pandas DataFrame, each column contains predicted probabilities from a model.
+    - labels: list of strings, optional, names for the models. If None, uses proba_df columns.
+    """
+    if labels is None:
+        labels = proba_df.columns.tolist()
+    
+    plt.figure(figsize=(8, 6))
+    # Plot the chance line.
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Chance')
+    
+    # Compute and plot ROC curve for each model.
+    for col, label in zip(proba_df.columns, labels):
+        fpr, tpr, _ = roc_curve(true_labels, proba_df[col])
+        roc_auc = auc(fpr, tpr)
+        plt.plot(fpr, tpr, label=f'{label} (AUC = {roc_auc:.2f})')
+    
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curves")
+    plt.legend(loc='lower right')
+    plt.grid(True)
+    plt.show()
+
+
+def plot_calibration_curves(true_labels, proba_df, n_bins=10, labels=None):
+    """
+    Plot calibration curves for multiple models.
+    
+    Parameters:
+    - true_labels: array-like, the true binary labels.
+    - proba_df: pandas DataFrame, each column contains predicted probabilities from a model.
+    - n_bins: int, number of bins to use in calibration curve.
+    - labels: list of strings, optional, names for the models. If None, uses proba_df columns.
+    """
+    if labels is None:
+        labels = proba_df.columns.tolist()
+    
+    plt.figure(figsize=(8, 6))
+    # Plot the perfectly calibrated line.
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Perfectly Calibrated')
+    
+    # Compute and plot calibration curves.
+    for col, label in zip(proba_df.columns, labels):
+        prob_true, prob_pred = calibration_curve(true_labels, proba_df[col], n_bins=n_bins)
+        plt.plot(prob_pred, prob_true, marker='o', label=label)
+    
+    plt.xlabel("Mean Predicted Probability")
+    plt.ylabel("Fraction of Positives")
+    plt.title("Calibration Curves")
+    plt.legend(loc='best')
+    plt.grid(True)
+    plt.show()
+
+
+def plot_precision_recall_curves(true_labels, proba_df, labels=None):
+    """
+    Plot Precision-Recall curves for multiple models.
+    
+    Parameters:
+    - true_labels: array-like, the true binary labels.
+    - proba_df: pandas DataFrame, each column contains predicted probabilities from a model.
+    - labels: list of strings, optional, names for the models. If None, uses proba_df columns.
+    """
+    if labels is None:
+        labels = proba_df.columns.tolist()
+    
+    plt.figure(figsize=(8, 6))
+    
+    # Compute and plot Precision-Recall curves.
+    for col, label in zip(proba_df.columns, labels):
+        precision, recall, _ = precision_recall_curve(true_labels, proba_df[col])
+        avg_prec = average_precision_score(true_labels, proba_df[col])
+        plt.plot(recall, precision, label=f'{label} (AP = {avg_prec:.2f})')
+    
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Precision-Recall Curves")
+    plt.legend(loc='lower left')
+    plt.grid(True)
+    plt.show()
