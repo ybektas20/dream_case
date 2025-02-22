@@ -24,7 +24,9 @@ def load_data(service_account_path: str) -> pd.DataFrame:
        'booster_spend', 'booster_earn', 'coin_amount', 'event_participate',
        'shop_open', 'd30_revenue', 'made_purchase'
 """
+
 def get_X_y(df_metrics: pd.DataFrame) -> pd.DataFrame:
+
     df = df_metrics.copy()
     X = df[[ 'age', 'time_spend', 'level_success',
          'event_participate', 'coin_amount', 'booster_spend',
@@ -75,7 +77,7 @@ def plot_histograms(X_train, bins=50, col_wrap=5, height=3):
     
     # Create a FacetGrid for the histograms
     g = sns.FacetGrid(df_melted, col="variable", col_wrap=col_wrap, sharex=False, sharey=False, height=height)
-    g.map(sns.histplot, "value", bins=bins)
+    g.map(sns.histplot, "value", bins=bins, kde = True)
     
     # Adjust the overall title and layout
     g.fig.subplots_adjust(top=0.9)
