@@ -199,3 +199,60 @@ def plot_precision_recall_curves(true_labels, proba_df, labels=None):
     plt.legend(loc='lower left')
     plt.grid(True)
     plt.show()
+
+def plot_scatter_with_labels(X, y, feature_x, feature_y, min_quantile=0.0, sampling_raito = 0.2):
+    """
+    Creates a scatter plot for two features with points colored by their target label.
+    
+    Parameters:
+    - X: pandas DataFrame containing the feature data.
+    - y: pandas Series or array-like containing the target labels.
+    - feature_x: str, the name of the feature to plot on the x-axis.
+    - feature_y: str, the name of the feature to plot on the y-axis.
+    - min_quantile: float, quantile threshold to filter out extreme values (default is 0.0, i.e., no filtering).
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    
+    # Create a copy of the data and add the target label.
+    data = X.copy()
+    data['target'] = y
+
+    data = data.sample(frac=sampling_raito, random_state=42)
+
+    try:
+        # Compute quantile limits for both features.
+        min_limit_x = data[feature_x].quantile(min_quantile)
+        max_limit_x = data[feature_x].quantile(1 - min_quantile)
+        min_limit_y = data[feature_y].quantile(min_quantile)
+        max_limit_y = data[feature_y].quantile(1 - min_quantile)
+        
+        # Filter out extreme values.
+        data_filtered = data[
+            (data[feature_x] > min_limit_x) & (data[feature_x] < max_limit_x) &
+            (data[feature_y] > min_limit_y) & (data[feature_y] < max_limit_y)
+        ]
+        
+        # Determine unique target values.
+        unique_targets = sorted(data_filtered['target'].unique())
+        
+        # Create a blue-red palette that is not too shiny.
+        if len(unique_targets) == 2:
+            # For binary targets, use fixed muted colors.
+            palette = {unique_targets[0]: "#4c72b0",  # Muted blue
+                       unique_targets[1]: "#c44e52"}  # Muted red
+        else:
+            # For multiple classes, generate a diverging blue-to-red palette.
+            palette = sns.color_palette("coolwarm", n_colors=len(unique_targets))
+        
+        # Create the scatter plot.
+        plt.figure(figsize=(10, 5))
+        sns.scatterplot(data=data_filtered, x=feature_x, y=feature_y, hue='target', palette=palette)
+        plt.title(f"Scatter Plot of {feature_x} vs {feature_y} Colored by Target")
+        plt.xlabel(feature_x)
+        plt.ylabel(feature_y)
+        plt.show()
+        
+    except Exception as e:
+        print(f"Could not plot scatter plot for features {feature_x} and {feature_y}.")
+        print(e)
